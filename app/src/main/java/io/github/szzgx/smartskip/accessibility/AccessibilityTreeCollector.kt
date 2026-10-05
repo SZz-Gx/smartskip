@@ -63,6 +63,8 @@ object AccessibilityTreeCollector {
         packageName: String?,
         activityName: String?,
         nowMs: Long,
+        displayWidth: Int = 0,
+        displayHeight: Int = 0,
     ): WindowAnalysis {
         val builder = TreeBuilder()
         try {
@@ -80,8 +82,29 @@ object AccessibilityTreeCollector {
         }
 
         val bounds = builder.rootBounds
-        val width = if (bounds != null) bounds[2] - bounds[0] else 0
-        val height = if (bounds != null) bounds[3] - bounds[1] else 0
+        val rootWidth = if (bounds != null) bounds[2] - bounds[0] else 0
+        val rootHeight = if (bounds != null) bounds[3] - bounds[1] else 0
+
+        /*
+         * The root node's bounds are normally a good stand-in for the window size, but not always.
+         *
+         * Observed on a real device: when a window's content is a single `TextView` — which is how
+         * one ad SDK exposed its splash — the root *is* that text view, so its bounds were
+         * 1200x45. Taking that as the window size made every node look like it filled the screen,
+         * `screenAreaFraction` came out at 1.0, and the "implausibly large" veto fired. The
+         * decision (do not click) happened to be harmless there, but it was reached for a
+         * completely wrong reason, and a wrong reason cannot be debugged or trusted.
+         *
+         * The root bounds are therefore used only when they are a credible window: at least a third
+         * of the display on both axes. Otherwise the caller's display size is used, falling back to
+         * the root bounds as a last resort.
+         */
+        val rootIsCredibleWindow = displayWidth > 0 && displayHeight > 0 &&
+            rootWidth >= MIN_PLAUSIBLE_WINDOW_FRACTION * displayWidth &&
+            rootHeight >= MIN_PLAUSIBLE_WINDOW_FRACTION * displayHeight
+
+        val width = if (rootIsCredibleWindow || displayWidth <= 0) rootWidth else displayWidth
+        val height = if (rootIsCredibleWindow || displayHeight <= 0) rootHeight else displayHeight
 
         return WindowAnalysis(
             packageName = packageName ?: builder.rootPackageName,
@@ -94,6 +117,9 @@ object AccessibilityTreeCollector {
             truncated = builder.truncated,
         )
     }
+
+    /** How much of the display the root node must cover to be accepted as the window size. */
+    private const val MIN_PLAUSIBLE_WINDOW_FRACTION = 0.33f
 
     /**
      * Convenience overload for a single candidate, used by the inspector when it wants

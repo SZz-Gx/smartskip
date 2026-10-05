@@ -114,6 +114,30 @@ object TextSignalAnalyzer {
                 signals += TextSignal.INDUCEMENT
                 phrases += ownText
             }
+            /*
+             * Detects the fake-skip pattern inside a single label, which exact matching misses.
+             *
+             * Found by running the adversarial harness on a real device: a control labelled
+             * "跳过领取" scored 22 and was refused only because the number was low. It was not
+             * vetoed, because the inducement check required the whole label to equal an entry in
+             * INDUCEMENT, and "跳过领取" does not equal "领取". The rejection was therefore
+             * accidental and would not survive a bait button whose label happened to score higher —
+             * and the first-sight threshold that also refused it is exactly what rule learning is
+             * designed to lower.
+             *
+             * Two mechanisms, because one is not enough:
+             *
+             *  * a known inducement word anywhere in the label; and
+             *  * the structural signature [KeywordMatcher.looksLikeBaitLabel] — skip wording
+             *    followed by further Chinese words, which is what bait always looks like because its
+             *    real purpose is the reward. The second mechanism is what makes this robust instead
+             *    of dependent on a word list that can never be completed.
+             */
+            val labelledInducement = KeywordMatcher.containsAny(ownText, KeywordRules.INDUCEMENT)
+            if (labelledInducement || KeywordMatcher.looksLikeBaitLabel(ownText)) {
+                signals += TextSignal.INDUCEMENT
+                phrases += ownText
+            }
             if (KeywordMatcher.exactMatch(ownText, KeywordRules.AD_DISCLOSURE)) {
                 signals += TextSignal.AD_DISCLOSURE_ON_ANCESTOR
                 phrases += ownText
@@ -130,6 +154,22 @@ object TextSignalAnalyzer {
             }
             if (KeywordMatcher.exactMatch(ownContentDescription, KeywordRules.STRONG_DANGER)) {
                 signals += TextSignal.STRONG_DANGER_ON_NODE
+                phrases += ownContentDescription
+            }
+            /*
+             * Bait detection for the content-description branch, which is not an afterthought: an
+             * icon-only skip button carries its label here and nowhere else, so this is where a fake
+             * one hides its "跳过领取".
+             *
+             * Found by the adversarial harness on a device. A control with
+             * `contentDescription='跳过领取'` produced only `[SKIP_IN_CONTENT_DESC]` and no veto,
+             * because the bait check had been written for the `text` branch alone. The label was
+             * visible to the engine and simply not examined.
+             */
+            if (KeywordMatcher.containsAny(ownContentDescription, KeywordRules.INDUCEMENT) ||
+                KeywordMatcher.looksLikeBaitLabel(ownContentDescription)
+            ) {
+                signals += TextSignal.INDUCEMENT
                 phrases += ownContentDescription
             }
         }
@@ -210,20 +250,53 @@ object TextSignalAnalyzer {
     }
 
     /**
-     * Extracts the remaining seconds from a countdown label, if present.
-     *
      * @return the number of seconds, or `null`.
+     *
+     * ## The bare-digit range is deliberately narrow
+     *
+     * A countdown that is *labelled* as seconds is accepted up to [MAX_LABELLED_SECONDS]. A bare
+     * number is held to the much smaller [MAX_BARE_SECONDS], because the bare-digit pattern has no
+     * semantic anchor at all.
+     *
+     * This was calibrated on a real device, where a live capture of Zhihu's feed produced
+     * `desc='赞同58' text='58' id=statusTv` and `desc='收藏42' text='42'` — like, comment and
+     * favourite counters, all classified as countdowns. Splash-ad countdowns run to roughly fifteen
+     * seconds; social counters routinely exceed that. Narrowing the bare range removes the false
+     * positives while still accepting every countdown form an ad actually uses (`"5"`, `"跳过 3"`).
      */
     fun parseCountdownSeconds(text: String): Int? {
-        val candidate = text.trim()
-        if (candidate.isEmpty() || candidate.length > 12) return null
-        for (pattern in KeywordRules.COUNTDOWN_PATTERNS) {
-            val m = pattern.find(candidate) ?: continue
-            val value = m.groupValues.getOrNull(1)?.toIntOrNull() ?: continue
-            // A countdown is seconds; anything above 60 is some other number that
-            // happened to match a permissive pattern.
-            if (value in 0..60) return value
+        if (text.isBlank() || text.length > 12) return null
+
+        /*
+         * Matched against the same normalised form the keyword layer uses, not the raw text.
+         *
+         * The raw text is not lower-cased, so `"Skip 3"` — with a capital S, which is how an English
+         * ad labels its control — did not match a pattern written in lower case. Chinese labels were
+         * unaffected, which is exactly the kind of asymmetry that stays hidden until a Latin UI is
+         * tested.
+         */
+        val candidate = TextNormalizer.matchingForm(text)
+        if (candidate.isEmpty()) return null
+
+        KeywordRules.COUNTDOWN_PATTERNS.forEachIndexed { index, pattern ->
+            val m = pattern.find(candidate) ?: return@forEachIndexed
+            val value = m.groupValues.getOrNull(1)?.toIntOrNull() ?: return@forEachIndexed
+            val limit = if (index == KeywordRules.BARE_DIGIT_PATTERN_INDEX) {
+                MAX_BARE_SECONDS
+            } else {
+                MAX_LABELLED_SECONDS
+            }
+            if (value in 0..limit) return value
         }
         return null
     }
+
+    /** Upper bound for a countdown that says so (`"31秒"`, `"31s"`, `"剩余31秒"`). */
+    private const val MAX_LABELLED_SECONDS = 60
+
+    /**
+     * Upper bound for a bare number. Deliberately small: a splash-ad countdown is short, and a
+     * larger value is far more likely to be an engagement counter.
+     */
+    private const val MAX_BARE_SECONDS = 15
 }

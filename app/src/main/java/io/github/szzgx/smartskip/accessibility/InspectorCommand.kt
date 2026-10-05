@@ -34,9 +34,11 @@ object InspectorCommand {
     const val ACTION_REQUEST_SCORED_DUMP = "io.github.szzgx.smartskip.action.REQUEST_SCORED_DUMP"
 
     /**
-     * Signature-level permission guarding the receiver. Declared in the manifest and required
-     * by the receiver, so a third-party app cannot send the broadcast even if it guesses the
-     * action.
+     * Signature-level permission guarding the receiver.
+     *
+     * Declared in the manifest and required by the receiver, so a third-party app cannot send the
+     * broadcast even if it guesses the action. Without it, any app on the device could ask
+     * SmartSkip to read whatever is currently on screen.
      */
     const val PERMISSION = "io.github.szzgx.smartskip.permission.INSPECTOR"
 

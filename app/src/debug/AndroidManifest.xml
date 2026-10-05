@@ -2,14 +2,81 @@
 <!--
     SmartSkip — debug-only manifest overlay
 
-    INTERNET is granted to the DEBUG VARIANT ONLY. It exists purely so that a
-    developer can load real WebView splash ads while investigating how they expose
-    themselves in the accessibility tree. The released APK does not contain this
-    permission, which is what makes the "no data leaves the device" claim
-    structurally true rather than merely promised.
+    Both things here exist to make the debug build investigable on a real device.
+
+    1. INTERNET is granted to the DEBUG VARIANT ONLY. It lets a developer load real
+       WebView splash ads while studying how they expose themselves in the accessibility
+       tree. The released APK does not contain this permission, which is what makes the
+       "no data leaves the device" claim structural rather than merely promised.
+
+    2. The permission guard on the inspector trigger is REMOVED for this variant.
+
+       `adb shell am broadcast` runs as the shell user, which does not hold a
+       signature-level permission that SmartSkip declares for itself. A guarded receiver
+       is therefore unreachable from the only tool that can capture a splash ad in
+       another app — the capture has to happen while that other app is on screen.
+
+       `tools:node="remove"` is the supported way to express this: the guard stays in the
+       shipping manifest, where it matters, and is lifted only here. The debug build is
+       installed by hand with `adb install -t`, and the trigger only causes SmartSkip to
+       read the current screen into its own memory. It never causes an action.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <application>
+        <receiver
+            android:name=".accessibility.InspectorCommandReceiver"
+            android:exported="true"
+            tools:node="merge"
+            tools:remove="android:permission" />
+
+        <!--
+            The adversarial test harness. Debug-only by being declared here, so it cannot appear in
+            a shipped manifest; the accessor in the navigation shell is gated on BuildConfig.DEBUG
+            as a second line of defence.
+
+            `exported="true"` is required because a run is driven by `adb shell am start`, and the
+            shell is a different uid: a non-exported Activity cannot be launched that way at all
+            (`SecurityException: not exported from uid ...`). That is acceptable here precisely
+            because this declaration is debug-only and the build is installed by hand. The Activity
+            itself only draws the test UI — it grants no capability the caller did not already have,
+            and the interesting interaction is with SmartSkip's own scoring, not with the caller.
+
+            `excludedFromRecents` keeps a debugging screen out of the task switcher.
+
+            No `launchMode` is set, so each `am start` creates a fresh instance with the requested
+            scenario. Marking it `singleTask` was actively harmful: a second `am start` would only
+            deliver `onNewIntent`, and the obvious workaround — force-stopping between scenarios —
+            causes HyperOS to drop SmartSkip's accessibility service from the enabled list, so every
+            scenario after the first evaluated nothing at all.
+        -->
+        <activity
+            android:name=".testharness.TestHarnessActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="SmartSkip 测试靶"
+            android:theme="@style/Theme.SmartSkip" />
+
+        <!--
+            Debug-only control channel, so that a harness run is a single adb command rather than a
+            sequence of taps on the right screens. It can flip the auto-skip master switch and
+            confirm rules, which are both legitimate user actions, and is unguarded because the
+            shell cannot hold a signature permission the app declares for itself.
+
+            None of this is reachable in a build that ships.
+        -->
+        <receiver
+            android:name=".testharness.HarnessControlReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.szzgx.smartskip.action.SET_AUTOSKIP" />
+                <action android:name="io.github.szzgx.smartskip.action.CONFIRM_RULES" />
+                <action android:name="io.github.szzgx.smartskip.action.RESET_RULES" />
+            </intent-filter>
+        </receiver>
+    </application>
 
 </manifest>

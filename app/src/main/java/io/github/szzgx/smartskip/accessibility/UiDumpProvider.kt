@@ -1,6 +1,8 @@
 package io.github.szzgx.smartskip.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.util.Log
+import io.github.szzgx.smartskip.BuildConfig
 import io.github.szzgx.smartskip.analysis.Assessment
 import io.github.szzgx.smartskip.analysis.AutoSkipMode
 import io.github.szzgx.smartskip.analysis.WindowContext
@@ -165,6 +167,7 @@ object UiDumpProvider {
     fun captureThroughService(service: AccessibilityService): Boolean {
         val root = runCatching { service.rootInActiveWindow }.getOrNull() ?: return false
         val packageName = runCatching { root.packageName?.toString() }.getOrNull()
+        val metrics = runCatching { service.resources.displayMetrics }.getOrNull()
 
         val analysis = runCatching {
             AccessibilityTreeCollector.capture(
@@ -172,6 +175,8 @@ object UiDumpProvider {
                 packageName = packageName,
                 activityName = null,
                 nowMs = System.currentTimeMillis(),
+                displayWidth = metrics?.widthPixels ?: 0,
+                displayHeight = metrics?.heightPixels ?: 0,
             )
         }.getOrNull() ?: return false
 
@@ -228,7 +233,7 @@ object UiDumpProvider {
             )
         }
 
-        return InspectorSnapshot(
+        val snapshot = InspectorSnapshot(
             packageName = analysis.packageName.orEmpty(),
             activityName = analysis.activityName,
             screenWidth = analysis.screenWidth,
@@ -241,6 +246,61 @@ object UiDumpProvider {
             paymentContextAvailable = probe.hasPaymentContext,
             nodes = nodes,
         )
+
+        /*
+         * Dump the scored capture to logcat in debug builds.
+         *
+         * This is the only practical way to inspect a real splash ad: the interesting screen is in
+         * *another* app, so a developer cannot be looking at SmartSkip's inspector UI at the time.
+         * Triggering a capture by broadcast and reading logcat is the workflow that actually works,
+         * and without it the only way to learn what an ad looks like is to guess.
+         *
+         * Debug-only, because these lines contain on-screen text.
+         */
+        if (scoreCandidates && BuildConfig.DEBUG) {
+            logSnapshot(snapshot)
+        }
+
+        return snapshot
+    }
+
+    private fun logSnapshot(snapshot: InspectorSnapshot) {
+        Log.i(
+            TAG,
+            "dump pkg=${snapshot.packageName} act=${snapshot.activityName} " +
+                "screen=${snapshot.screenWidth}x${snapshot.screenHeight} " +
+                "nodes=${snapshot.nodes.size} candidates=${snapshot.candidateCount} " +
+                "adContext=${snapshot.adContextAvailable} truncated=${snapshot.truncated}",
+        )
+
+        snapshot.nodes.forEach { node ->
+            val label = buildString {
+                append(node.indent)
+                append(node.className.substringAfterLast('.'))
+                if (node.text.isNotEmpty()) append(" text='").append(node.text).append('\'')
+                if (node.contentDescription.isNotEmpty()) {
+                    append(" desc='").append(node.contentDescription).append('\'')
+                }
+                node.viewId?.let { append(" id=").append(it.substringAfterLast('/')) }
+            }
+
+            if (node.isCandidate) {
+                Log.i(
+                    TAG,
+                    "  CANDIDATE $label bounds=${node.bounds} clickable=${node.clickable} " +
+                        "visible=${node.visibleToUser} children=${node.childCount}",
+                )
+                Log.i(TAG, "    signals=${node.textSignals}")
+                Log.i(
+                    TAG,
+                    "    score=${node.score} band=${node.band} threshold=${node.effectiveThreshold} " +
+                        "wouldClick=${node.wouldClick} vetoes=${node.vetoes}",
+                )
+                node.contributions.forEach { Log.i(TAG, "      $it") }
+            } else if (node.textSignals.isNotEmpty()) {
+                Log.i(TAG, "  signals $label :: ${node.textSignals}")
+            }
+        }
     }
 
     private data class Scored(val assessment: Assessment, val threshold: Int)
@@ -297,6 +357,8 @@ object UiDumpProvider {
 
         return Scored(assessment, threshold)
     }
+
+    private const val TAG = "SmartSkip/Inspector"
 }
 
 /** Adapts the collector's raw probe to the analysis package's type. */

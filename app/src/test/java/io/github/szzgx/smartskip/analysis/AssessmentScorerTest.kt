@@ -130,6 +130,90 @@ class AssessmentScorerTest {
     }
 
     @Test
+    fun `a bait label combining skip and inducement in one string is vetoed, not merely outscored`() {
+        /*
+         * Regression test for a real defect.
+         *
+         * The adversarial harness on a device presented a control labelled "跳过领取". It was
+         * refused, but only because it scored 22 — the inducement check required the whole label to
+         * equal an entry in INDUCEMENT, and "跳过领取" does not equal "领取". So the veto never
+         * fired and the refusal was a coincidence of arithmetic.
+         *
+         * That is not good enough for this project's central threat: a bait button scoring a little
+         * higher would have passed, and the first-sight threshold that also stood in the way is
+         * precisely what rule learning is designed to lower.
+         */
+        val bait = candidate(ownText = "跳过领取")
+        val assessment = assess(bait)
+
+        assertTrue(
+            "a label carrying both skip wording and an inducement must be vetoed, not just scored low",
+            VetoReason.SKIP_WORDING_BAIT in assessment.vetoes,
+        )
+        assertTrue(assessment.isVetoed)
+
+        // And it must stay refused even with a proven, user-confirmed rule behind it.
+        val verdict = decide(
+            candidate = bait,
+            history = safeHistory(userConfirmed = true, successCount = 9),
+        )
+        assertFalse("no amount of history may authorise tapping bait", verdict.shouldClick)
+    }
+
+    @Test
+    fun `inducement on a neighbouring node also vetoes, because that is the usual bait layout`() {
+        /*
+         * Found on a device with the adversarial harness: a fixture with own text "跳过" and a
+         * sibling "领取红包" produced `[SKIP_EXACT, INDUCEMENT]` yet no veto, because the inducement
+         * lived on the sibling and the bait test required both signals to be on the node itself.
+         *
+         * A skip button sitting next to a "免费领取" banner is the most common bait layout there is,
+         * so the inducement is read from the whole evidence, not from the node's own label.
+         */
+        val assessment = assess(candidate(ownText = "跳过", siblingText = "领取红包"))
+        assertTrue(VetoReason.SKIP_WORDING_BAIT in assessment.vetoes)
+
+        // Still refused even when a proven, user-confirmed rule backs it.
+        assertFalse(
+            decide(
+                candidate = candidate(ownText = "跳过", siblingText = "领取红包"),
+                history = safeHistory(userConfirmed = true, successCount = 9),
+            ).shouldClick,
+        )
+    }
+
+    @Test
+    fun `a bait label is vetoed whether it arrives as text or as a contentDescription`() {
+        /*
+         * Regression test for a real defect found on a device.
+         *
+         * An icon-only skip button carries its label in `contentDescription` and nowhere else, which
+         * is precisely where a fake one would put "跳过领取". The bait check had been written for the
+         * `text` branch only, so such a control produced `[SKIP_IN_CONTENT_DESC]` alone and no veto —
+         * the label was visible to the engine and simply not examined.
+         */
+        val asText = assess(candidate(ownText = "跳过领取"))
+        val asDescription = assess(candidate(ownText = "", ownContentDescription = "跳过领取"))
+
+        assertTrue(
+            "bait as text must be vetoed",
+            VetoReason.SKIP_WORDING_BAIT in asText.vetoes,
+        )
+        assertTrue(
+            "bait as contentDescription must be vetoed too",
+            VetoReason.SKIP_WORDING_BAIT in asDescription.vetoes,
+        )
+    }
+
+    @Test
+    fun `a plain skip label is not mistaken for bait`() {
+        // The guard above must not fire on a genuine skip button.
+        assertFalse(VetoReason.SKIP_WORDING_BAIT in assess(candidate(ownText = "跳过")).vetoes)
+        assertFalse(VetoReason.SKIP_WORDING_BAIT in assess(candidate(ownText = "跳过广告")).vetoes)
+        assertFalse(VetoReason.SKIP_WORDING_BAIT in assess(candidate(ownText = "跳过此广告")).vetoes)
+    }
+
+    @Test
     fun `a control that is not actionable is vetoed`() {
         val assessment = assess(
             candidate(isClickable = false, clickableAncestorDepth = null),

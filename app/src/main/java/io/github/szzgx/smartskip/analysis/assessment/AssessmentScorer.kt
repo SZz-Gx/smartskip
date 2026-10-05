@@ -516,11 +516,24 @@ object AssessmentScorer {
         if (risk.isInPaymentFlow) vetoes += VetoReason.PAYMENT_OR_CREDENTIAL
         if (TextSignal.STRONG_DANGER_ON_NODE in text.signals) vetoes += VetoReason.STRONG_DANGER_TEXT
 
-        // The signature dark pattern: skip wording and an inducement or a serious
-        // action on the very same control. "跳过" that reveals a reward, or that
-        // installs something, is bait and must never be tapped automatically.
-        val baitish = TextSignal.INDUCEMENT in text.signals || TextSignal.CREATIVE_TEXT in text.signals
-        if (text.hasSkipWording && baitish) vetoes += VetoReason.SKIP_WORDING_BAIT
+        /*
+         * The signature dark pattern: skip wording together with an inducement. "跳过" that claims
+         * a reward is bait and must never be tapped automatically.
+         *
+         * The inducement is deliberately read from the whole evidence rather than from the node's own
+         * label, because `TextSignal.INDUCEMENT` is also raised by *neighbouring* text — and a skip
+         * button sitting next to a "免费领取" banner is the most common bait layout there is.
+         *
+         * Found by the adversarial harness on a real device: a fixture with own text "跳过" and a
+         * sibling "领取红包" produced `[SKIP_EXACT, INDUCEMENT]` yet no veto, because the inducement
+         * lived on the sibling. The control was refused only by the first-sight threshold, which is
+         * exactly what rule learning lowers — so the defence was accidental rather than structural.
+         */
+        val inducementPresent = TextSignal.INDUCEMENT in text.signals ||
+            TextSignal.CREATIVE_TEXT in text.signals
+        if (text.hasSkipWording && inducementPresent) {
+            vetoes += VetoReason.SKIP_WORDING_BAIT
+        }
 
         if (risk.hasPriorDanger) vetoes += VetoReason.SKIP_WORDING_BAIT
         if (history.isUserRejected) vetoes += VetoReason.SKIP_WORDING_BAIT

@@ -50,14 +50,39 @@ object KeywordRules {
      * Text that counts a splash ad down. On its own this is strong evidence that
      * the current screen is a splash ad, because almost nothing else in a normal
      * app counts itself down while covering the whole screen.
+     *
+     * The *bare digit* pattern is the dangerous one: it matches like counts, comment
+     * counts and version strings all over a normal UI. Its position in this list is
+     * published as [BARE_DIGIT_PATTERN_INDEX] so that
+     * [TextSignalAnalyzer.parseCountdownSeconds] can hold it to a much smaller numeric
+     * range than the labelled forms — a calibration that came from a real capture.
      */
     val COUNTDOWN_PATTERNS: List<Regex> = listOf(
-        // "3s", "3 s", "3秒", "3 秒", "剩余3秒", "还剩 3 秒"
+        // "3s", "3 s", "3秒", "3 秒"
         Regex("""^\s*(\d{1,2})\s*(?:s|sec|secs|second|seconds|秒)\s*$"""),
+        // "剩余3秒", "还剩 3 秒", "倒计时 3 秒", "广告 3 秒"
         Regex("""^\s*(?:剩余|还剩|剩下|倒计时|倒记时|广告\s*)?\s*(\d{1,2})\s*(?:s|秒)\s*$"""),
-        Regex("""^\s*(\d{1,2})\s*$"""), // bare digits in a small corner node
-        Regex("""^\s*(?:skip|跳过)\D{0,4}(\d{1,2})\s*(?:s|秒)?\s*$"""),
+        // "跳过 3", "跳过3", "跳过  3", "Skip 3"
+        //
+        // The separator is an explicit run of *whitespace only*. Two earlier attempts were wrong in
+        // ways the tests caught:
+        //
+        //   * `\D{0,4}` could not match "跳过 5" at all, because `\D` consumed the space and the
+        //     following `\d` then had to match another space;
+        //   * `[\s\D]{0,4}?` was worse — `\D` also matches digits, so the lazy quantifier ate the
+        //     "5" before the capture group could see it, and "跳过5" stopped being a countdown.
+        Regex("""^\s*(?:skip|跳过)[\s]{0,4}(\d{1,2})\s*(?:s|秒)?\s*$"""),
+        // A bare number in a small corner node. Last on purpose: see BARE_DIGIT_PATTERN_INDEX.
+        Regex("""^\s*(\d{1,2})\s*$"""),
     )
+
+    /**
+     * Index of the bare-digit pattern within [COUNTDOWN_PATTERNS].
+     *
+     * Exists so that the analyser can bound the bare pattern differently without duplicating the
+     * list. If the order of [COUNTDOWN_PATTERNS] changes, this must change with it.
+     */
+    const val BARE_DIGIT_PATTERN_INDEX = 3
 
     /**
      * Text that a control is a "close" affordance. Ambiguous: legitimate dialogs

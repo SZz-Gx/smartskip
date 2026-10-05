@@ -10,7 +10,8 @@
     data it observes. The `debug` variant opts into INTERNET only through
     app/src/debug/AndroidManifest.xml so that WebView-based ads can be debugged.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!--
         Guards the inspector trigger. Signature level, so only a build signed with the same
@@ -66,12 +67,18 @@
         </service>
 
         <!--
-            Lets an inspector capture be requested from outside the UI, which is how the
-            inspector is used in practice: the interesting splash ad is in another app, so a
-            capture is triggered by adb or a future tile and read afterwards.
+            Lets an inspector capture be requested from outside the UI, which is how the inspector
+            is used in practice: the splash ad being investigated is in another app, so a capture is
+            triggered by adb and read from logcat afterwards.
 
-            The signature-level permission is the security boundary. Without it, any app on the
+            The signature-level permission is the security boundary: without it any app on the
             device could ask SmartSkip to read whatever is currently on screen.
+
+            That guard is deliberately lifted for the debug build, because `adb shell am broadcast`
+            runs as the shell user and does not hold a signature permission SmartSkip declares for
+            itself — a guarded receiver is unreachable from the only tool that can capture a splash
+            ad in another app. The debug overlay removes the attribute with `tools:node="remove"`,
+            which is the supported way to express "release only".
         -->
         <receiver
             android:name=".accessibility.InspectorCommandReceiver"

@@ -118,11 +118,78 @@ class TextNormalizerTest {
         assertEquals(15, TextSignalAnalyzer.parseCountdownSeconds("剩余15秒"))
         assertEquals(5, TextSignalAnalyzer.parseCountdownSeconds("跳过 5"))
 
-        // Rejections: these are why the check is strict.
-        assertEquals(null, TextSignalAnalyzer.parseCountdownSeconds("88"))   // too large for a countdown
+        // Rejections.
         assertEquals(null, TextSignalAnalyzer.parseCountdownSeconds("v3.2.1"))
         assertEquals(null, TextSignalAnalyzer.parseCountdownSeconds("跳过"))
         assertEquals(null, TextSignalAnalyzer.parseCountdownSeconds("2026"))
+    }
+
+    @Test
+    fun `countdown separators are matched however the ad spaced them`() {
+        /*
+         * Regression test for two consecutive mistakes in the "skip + countdown" pattern.
+         *
+         * `\D{0,4}` could not match "跳过 5" at all: `\D` consumed the space, so the following
+         * `\d` had to match another space. Replacing it with `[\s\D]{0,4}?` was worse — `\D` also
+         * matches digits, so the lazy quantifier swallowed the "5" before the capture group saw it
+         * and "跳过5" stopped being a countdown.
+         *
+         * Both errors were silent: a countdown attached to a skip button simply was not recognised,
+         * which lowers the score of exactly the controls this project most wants to identify.
+         */
+        assertEquals(5, TextSignalAnalyzer.parseCountdownSeconds("跳过 5"))
+        assertEquals(5, TextSignalAnalyzer.parseCountdownSeconds("跳过5"))
+        assertEquals(5, TextSignalAnalyzer.parseCountdownSeconds("跳过  5"))
+        assertEquals(10, TextSignalAnalyzer.parseCountdownSeconds("跳过 10"))
+        assertEquals(3, TextSignalAnalyzer.parseCountdownSeconds("Skip 3"))
+        assertEquals(3, TextSignalAnalyzer.parseCountdownSeconds("跳过 3s"))
+    }
+
+    @Test
+    fun `bait labels are recognised structurally, not by word list`() {
+        /*
+         * The fake-skip shape: skip wording that keeps talking, because the real purpose of the
+         * control is the reward. A word list can never be finished (领取, 领奖, 领奖励, 赢好礼,
+         * 抽大奖, 天天领 ...), whereas the skip vocabulary is small and closed.
+         */
+        assertTrue(KeywordMatcher.looksLikeBaitLabel("跳过领取"))
+        assertTrue(KeywordMatcher.looksLikeBaitLabel("跳过领奖"))
+        assertTrue(KeywordMatcher.looksLikeBaitLabel("跳过引导"))
+        assertTrue(KeywordMatcher.looksLikeBaitLabel("跳过得奖励"))
+
+        // Established skip phrasings must NOT be flagged. These two are in SKIP_EXACT because they
+        // are how ordinary ads label the very button this guard exists to protect; flagging them
+        // would mean never skipping an ad whose button says "跳过广告".
+        assertFalse(KeywordMatcher.looksLikeBaitLabel("跳过"))
+        assertFalse(KeywordMatcher.looksLikeBaitLabel("跳过广告"))
+        assertFalse(KeywordMatcher.looksLikeBaitLabel("跳过此广告"))
+
+        // A countdown and a Latin phrase are not bait either.
+        assertFalse(KeywordMatcher.looksLikeBaitLabel("跳过 5"))
+        assertFalse(KeywordMatcher.looksLikeBaitLabel("跳过 Ad"))
+        assertFalse(KeywordMatcher.looksLikeBaitLabel("Skip Ad"))
+
+        // And a sentence that merely contains the word is not bait, because "跳过" there does not
+        // start a word.
+        assertFalse(KeywordMatcher.looksLikeBaitLabel("如何跳过步骤"))
+    }
+
+    @Test
+    fun `a bare number is only a countdown when it is short enough to be one`() {        /*
+         * Calibrated from a real capture of Zhihu's feed, which produced
+         * `desc='赞同58' text='58' id=statusTv` and `desc='收藏42' text='42'` — engagement
+         * counters being read as countdowns. Splash-ad countdowns are short; counters are not.
+         */
+        assertEquals(9, TextSignalAnalyzer.parseCountdownSeconds("9"))
+        assertEquals(15, TextSignalAnalyzer.parseCountdownSeconds("15"))
+        assertEquals(null, TextSignalAnalyzer.parseCountdownSeconds("31"))
+        assertEquals(null, TextSignalAnalyzer.parseCountdownSeconds("42"))
+        assertEquals(null, TextSignalAnalyzer.parseCountdownSeconds("58"))
+
+        // A *labelled* countdown of the same magnitude is still accepted, because the label is
+        // real evidence that the number means seconds.
+        assertEquals(31, TextSignalAnalyzer.parseCountdownSeconds("剩余31秒"))
+        assertEquals(31, TextSignalAnalyzer.parseCountdownSeconds("31s"))
     }
 
     @Test

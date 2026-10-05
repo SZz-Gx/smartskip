@@ -140,9 +140,16 @@ object DecisionEngine {
         // ------------------------------------------------------- 2. threshold
         if (assessment.score < effective) {
             val reason = when {
+                /*
+                 * Observation-only mode. The message must NOT claim the score was sufficient:
+                 * the gate is `FIRST_SIGHT_OBSERVATION_THRESHOLD`, which is above 100, so nothing
+                 * reaches it. An earlier wording said "已达到可自动跳过的水平" ("has reached the
+                 * level where it could be auto-skipped") for a score of 51, which was simply
+                 * false and would have destroyed a user's trust in every other message.
+                 */
                 firstSightUnconfirmed && assessment.band != ConfidenceBand.IGNORE ->
-                    "评分 ${assessment.score} 已达到可自动跳过的水平，但该应用此前从未处理过，本次仅观察。" +
-                        "确认该规则后，下次将自动跳过。"
+                    "评分 ${assessment.score}：该应用此前从未处理过，本次仅观察、不点击。" +
+                        "在“规则”页确认该规则后，下次遇到相同结构即可自动跳过。"
 
                 assessment.band == ConfidenceBand.IGNORE ->
                     "评分 ${assessment.score} 属于“不处理”区间（阈值 $effective）"

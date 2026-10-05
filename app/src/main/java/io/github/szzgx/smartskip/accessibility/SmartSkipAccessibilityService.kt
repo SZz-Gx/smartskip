@@ -6,6 +6,7 @@ import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import io.github.szzgx.smartskip.BuildConfig
 import io.github.szzgx.smartskip.SmartSkipApplication
 import io.github.szzgx.smartskip.ServiceContainer
 import io.github.szzgx.smartskip.analysis.Assessment
@@ -109,6 +110,23 @@ class SmartSkipAccessibilityService : AccessibilityService() {
 
     private var pendingVerification: PendingVerification? = null
 
+    /**
+     * How much this service logs.
+     *
+     * Decided from the build type rather than a compile-time constant, because the interesting
+     * failures happen in the *debug* build on a real device, where a developer needs to watch the
+     * pipeline work. A release build stays quiet: a chatty accessibility service is both a battery
+     * and a privacy liability, since its log lines describe what was on screen.
+     *
+     * `Log.d` alone is not sufficient. Vendor ROMs — HyperOS among them — filter debug-level output
+     * by default, so a decision path logged at debug level is invisible exactly where it matters.
+     * That is why the decision logs below are at info level and merely gated by this setting.
+     */
+    private enum class Verbosity { QUIET, NORMAL, VERBOSE }
+
+    private val verbosity: Verbosity
+        get() = if (BuildConfig.DEBUG) Verbosity.VERBOSE else Verbosity.QUIET
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         container = SmartSkipApplication.containerOf(this)
@@ -118,7 +136,7 @@ class SmartSkipAccessibilityService : AccessibilityService() {
         // Lets the inspector ask for a scored capture of whatever is on screen now.
         InspectorCommand.register { UiDumpProvider.captureThroughService(this) }
         scope.launch { consumeEvents() }
-        Log.i(TAG, "connected")
+        Log.i(TAG, "connected; verbosity=$verbosity")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -228,7 +246,15 @@ class SmartSkipAccessibilityService : AccessibilityService() {
         UiDumpProvider.publish(analysis)
 
         val candidates = CandidateCollector.collect(analysis, signatureHistory)
-        if (candidates.isEmpty()) return
+        if (candidates.isEmpty()) {
+            if (verbosity >= Verbosity.VERBOSE) {
+                Log.i(
+                    TAG,
+                    "frame pkg=$packageName nodes=${analysis.nodes.size} no skip-shaped candidate",
+                )
+            }
+            return
+        }
 
         // Note the app once, so it appears in the UI even if SmartSkip never acts on it. Guarded
         // by an in-memory set because this runs on a hot path and the database write is only
@@ -255,6 +281,12 @@ class SmartSkipAccessibilityService : AccessibilityService() {
         )
 
         val window = buildWindowContext(packageName, analysis, probe, now)
+
+        Log.i(
+            TAG,
+            "frame pkg=$packageName act=${analysis.activityName?.substringAfterLast('.')} " +
+                "nodes=${analysis.nodes.size} candidates=${candidates.size}",
+        )
 
         // ------------------------------------------------------------- evaluation
         val safety = container.safetyRepository.safetyOf(packageName)
@@ -359,6 +391,27 @@ class SmartSkipAccessibilityService : AccessibilityService() {
             }.onFailure { Log.w(TAG, "could not learn new rule", it) }
         }
 
+        // ------------------------------------------------------------- decision log
+        // One line that says what was chosen and why. Without this the pipeline is a black box in
+        // the field, which is the opposite of the project's whole premise.
+        //
+        // The veto list is printed explicitly rather than left implicit in the score, because
+        // "refused because a hard rule forbids it" and "refused because the score was too low" are
+        // very different guarantees, and a reader cannot tell them apart from the number alone.
+        if (verbosity != Verbosity.QUIET) {
+            val vetoText = if (assessment.vetoes.isEmpty()) {
+                ""
+            } else {
+                " vetoes=${assessment.vetoes.joinToString(",")}"
+            }
+            Log.i(
+                TAG,
+                "chose score=${verdict.score}/${verdict.effectiveThreshold} band=${assessment.band} " +
+                    "want=${verdict.shouldClick} armed=$autoSkipAllowed stage=${verdict.stage}" +
+                    vetoText + " sig=${candidate.structureSignature} :: ${verdict.reason}",
+            )
+        }
+
         // --------------------------------------------------------------- recording
         val eventId = runCatching {
             container.eventRecorder.record(
@@ -371,7 +424,7 @@ class SmartSkipAccessibilityService : AccessibilityService() {
         }.getOrNull()
 
         if (!verdict.shouldClick) {
-            Log.d(TAG, "no click: ${verdict.reason}")
+            Log.i(TAG, "no click: ${verdict.reason}")
             ServiceStatus.recordObservation(packageName, verdict.score, verdict.reason)
             return
         }
@@ -382,7 +435,7 @@ class SmartSkipAccessibilityService : AccessibilityService() {
                 packageName in prefs.watchOnlyPackages -> "$packageName 处于仅观察列表"
                 else -> safety.suspensionReason ?: "$packageName 已被暂停自动操作"
             }
-            Log.d(TAG, "would have clicked (score ${verdict.score}) but $why")
+            Log.i(TAG, "would have clicked (score ${verdict.score}) but $why")
             ServiceStatus.recordObservation(packageName, verdict.score, "本可跳过（${verdict.score} 分），但$why")
             return
         }
@@ -416,7 +469,7 @@ class SmartSkipAccessibilityService : AccessibilityService() {
         eventId: Long?,
     ) {
         val target = resolveLiveNode(candidate) ?: run {
-            Log.d(TAG, "confirm failed: ${candidate.structureSignature} vanished before click")
+            Log.i(TAG, "confirm failed: ${candidate.structureSignature} vanished before click")
             return
         }
 
@@ -429,11 +482,21 @@ class SmartSkipAccessibilityService : AccessibilityService() {
             nodeSignature = candidate.structureSignature,
         )
 
+        // Logged *before* the attempt, because a refused click currently produces no trace at all
+        // and that silence is indistinguishable from "the engine decided not to click". Without
+        // this line the click path cannot be diagnosed in the field.
+        Log.i(
+            TAG,
+            "attempting click on ${clickable.className} " +
+                "(target=${target.className} clickable=${clickable.isClickable} " +
+                "enabled=${clickable.isEnabled})",
+        )
+
         val performed = runCatching { clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK) }
             .getOrDefault(false)
 
         if (!performed) {
-            Log.d(TAG, "framework refused the click for ${candidate.structureSignature}")
+            Log.w(TAG, "framework refused the click for ${candidate.structureSignature}")
             return
         }
 
@@ -553,12 +616,16 @@ class SmartSkipAccessibilityService : AccessibilityService() {
         val source = runCatching { event.source }.getOrNull()
         val root = source ?: runCatching { rootInActiveWindow }.getOrNull() ?: return null
 
+        val metrics = resources.displayMetrics
+
         return runCatching {
             AccessibilityTreeCollector.capture(
                 root = root,
                 packageName = packageName,
                 activityName = currentActivity,
                 nowMs = nowMs,
+                displayWidth = metrics.widthPixels,
+                displayHeight = metrics.heightPixels,
             )
         }.getOrNull()
     }
@@ -717,9 +784,41 @@ class SmartSkipAccessibilityService : AccessibilityService() {
     }
 
     private fun isIgnoredPackage(packageName: String): Boolean {
-        if (packageName == this.packageName) return true
+        /*
+         * SmartSkip's own package is normally ignored: analysing our own UI would be pointless
+         * work, and letting the service see its own windows invites feedback loops.
+         *
+         * The exception exists for the debug test harness (design decision: verifying the click
+         * path requires a screen that contains a *known* skip control, and no real ad provides one
+         * — every real ad captured on a device hid its skip button from the accessibility tree
+         * entirely). The harness lives in this package, so the self-exclusion is lifted for debug
+         * builds only; `BuildConfig.DEBUG` is false in anything that ships.
+         */
+        if (packageName == this.packageName) return !BuildConfig.DEBUG
         if (packageName.startsWith(IGNORED_PACKAGE_PREFIX)) return true
-        return packageName in IGNORED_PACKAGES
+        if (packageName in IGNORED_PACKAGES) return true
+        // The device's own home app, whatever the vendor called it. Asked of the platform rather
+        // than guessed from the name, because a launcher is never a splash-ad context and a
+        // substring match on "launcher" would also catch unrelated packages.
+        return packageName in resolvedHomePackages
+    }
+
+    /**
+     * Package names the system reports as home apps, resolved once.
+     *
+     * Testing on a real device showed the Xiaomi launcher producing scored candidates — one of
+     * them at 78, inside the "candidate" band — purely because a home-screen widget mentions
+     * "跳过" in a content description. Excluding the launcher by identity removes that entire
+     * class of noise without risking a false exclusion of a legitimate app.
+     */
+    private val resolvedHomePackages: Set<String> by lazy {
+        runCatching {
+            val intent = android.content.Intent(android.content.Intent.ACTION_MAIN)
+                .addCategory(android.content.Intent.CATEGORY_HOME)
+            packageManager.queryIntentActivities(intent, 0)
+                .mapNotNull { it.activityInfo?.packageName }
+                .toSet()
+        }.getOrDefault(emptySet())
     }
 
     private companion object {
@@ -740,10 +839,18 @@ class SmartSkipAccessibilityService : AccessibilityService() {
         /**
          * Surfaces that are never the target app's splash ad.
          *
-         * `com.android.systemui` is by far the most important entry: without it
-         * SmartSkip would assess the notification shade and the navigation bar
-         * constantly, which is both wasteful and a needless look at the user's
-         * notifications.
+         * `com.android.systemui` is by far the most important entry: without it SmartSkip would
+         * assess the notification shade and the navigation bar constantly, which is both wasteful
+         * and a needless look at the user's notifications.
+         *
+         * ## Why launchers are here
+         *
+         * Found by testing on a real device: the Xiaomi launcher (`com.miui.home`) produced seven
+         * scored candidates, one of them reaching 78 — the "candidate" band — because a widget on
+         * the home screen carries the word "跳过" somewhere in a `contentDescription`. A launcher
+         * is never a context in which a splash ad can appear, so analysing it produces nothing but
+         * false positives, database noise and CPU cost. Every launcher package is therefore
+         * excluded outright rather than left to the scoring layer to reject.
          */
         val IGNORED_PACKAGES = setOf(
             "com.android.systemui",
@@ -753,6 +860,16 @@ class SmartSkipAccessibilityService : AccessibilityService() {
             "com.android.packageinstaller",
             "com.google.android.permissioncontroller",
             "com.google.android.packageinstaller",
+            // Launchers: never a splash-ad context.
+            "com.miui.home",
+            "com.android.launcher",
+            "com.android.launcher3",
+            "com.google.android.apps.nexuslauncher",
+            "com.huawei.android.launcher",
+            "com.oppo.launcher",
+            "com.bbk.launcher2",
+            "com.sec.android.app.launcher",
+            "com.android.launcher.launcher3",
         )
 
         /** Covers both the release and the `.debug` applicationId. */
