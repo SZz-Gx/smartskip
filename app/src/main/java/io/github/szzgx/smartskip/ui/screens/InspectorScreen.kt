@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +55,17 @@ fun InspectorScreen() {
     val snapshot by UiDumpProvider.snapshot.collectAsStateWithLifecycle()
 
     var serviceAvailable by remember { mutableStateOf(true) }
+
+    /*
+     * Live per-frame capture is enabled only while this screen is actually on screen. Building
+     * an inspector snapshot runs text analysis over every node and materialises the whole tree as
+     * strings; doing that on every accessibility frame, for a screen nobody is looking at, is
+     * waste on a hot path.
+     */
+    DisposableEffect(Unit) {
+        UiDumpProvider.setLiveCaptureEnabled(true)
+        onDispose { UiDumpProvider.setLiveCaptureEnabled(false) }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(

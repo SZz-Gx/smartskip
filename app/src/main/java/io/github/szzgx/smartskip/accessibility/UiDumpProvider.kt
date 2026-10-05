@@ -123,13 +123,34 @@ object UiDumpProvider {
     /** The most recent capture, for Compose to observe. */
     val snapshot: StateFlow<InspectorSnapshot> = _snapshot.asStateFlow()
 
+    /**
+     * Whether per-frame capture is wanted.
+     *
+     * Building a snapshot means running text analysis over every node and materialising the
+     * whole tree as strings. Doing that on every accessibility frame, for a screen nobody may be
+     * looking at, is pure waste on a hot path — so it is off by default and turned on only while
+     * the inspector screen is actually open.
+     */
+    @Volatile
+    private var liveCaptureEnabled: Boolean = false
+
+    /** Called by the inspector when it becomes visible. */
+    fun setLiveCaptureEnabled(enabled: Boolean) {
+        liveCaptureEnabled = enabled
+    }
+
     /** Drops the retained capture, so the UI can discard screen text on demand. */
     fun clear() {
         _snapshot.value = InspectorSnapshot.EMPTY
     }
 
-    /** Publishes a raw, unscored capture. Called on every assessed frame. */
+    /**
+     * Publishes a raw, unscored capture of the frame the service just assessed.
+     *
+     * Does nothing unless [setLiveCaptureEnabled] was called with `true`.
+     */
     fun publish(analysis: WindowAnalysis) {
+        if (!liveCaptureEnabled) return
         _snapshot.value = build(analysis, scoreCandidates = false)
     }
 

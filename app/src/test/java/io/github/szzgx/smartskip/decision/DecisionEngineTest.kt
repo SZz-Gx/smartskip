@@ -151,6 +151,56 @@ class DecisionEngineTest {
     }
 
     @Test
+    fun `the learning progression from observation to automatic action`() {
+        // Design doc §9: "第一次：观察 / 第二次：辅助 / 第三次：自动". This walks the three
+        // states the rule store actually produces, so the progression cannot silently break the
+        // way it did when the first-sight check consulted a cache that was never populated.
+        val assessment = assess(candidate())
+
+        // First encounter: no rule exists at all.
+        val firstTime = DecisionEngine.decide(
+            assessment = assessment,
+            mode = AutoSkipMode.STANDARD,
+            isKnownRule = false,
+            isUserConfirmed = false,
+        )
+        assertFalse("the first encounter must only observe", firstTime.shouldClick)
+
+        // A later encounter, after a rule was learned from the observed control. The rule store
+        // reports isNewPackageOrActivity = false once a rule exists.
+        val learnedRule = safeHistory(
+            confidence = 0.59f,
+            successCount = 1,
+            isNewPackageOrActivity = false,
+        )
+        val secondTime = DecisionEngine.decide(
+            assessment = assess(candidate(), history = learnedRule),
+            mode = AutoSkipMode.STANDARD,
+            isKnownRule = learnedRule.knownSignature,
+            isUserConfirmed = learnedRule.isUserConfirmed,
+        )
+        assertTrue(
+            "once a rule exists the control must become actionable " +
+                "(score=${secondTime.score}, threshold=${secondTime.effectiveThreshold})",
+            secondTime.shouldClick,
+        )
+
+        // The user explicitly vouches for it, which must not make things worse.
+        val confirmed = safeHistory(userConfirmed = true, isNewPackageOrActivity = false)
+        val afterConfirmation = DecisionEngine.decide(
+            assessment = assess(candidate(), history = confirmed),
+            mode = AutoSkipMode.STANDARD,
+            isKnownRule = true,
+            isUserConfirmed = true,
+        )
+        assertTrue(afterConfirmation.shouldClick)
+        assertTrue(
+            "confirming a rule must not raise its threshold",
+            afterConfirmation.effectiveThreshold <= secondTime.effectiveThreshold,
+        )
+    }
+
+    @Test
     fun `the top contributions are ordered by magnitude`() {
         val assessment = assess(candidate())
         val top = DecisionEngine.topContributions(assessment, limit = 4)

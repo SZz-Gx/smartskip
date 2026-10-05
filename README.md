@@ -402,14 +402,14 @@ app/src/main/java/io/github/szzgx/smartskip/
 ./gradlew :app:testDebugUnitTest
 ```
 
-86 个测试，全部是 JVM 测试，不需要设备。覆盖：
+87 个测试，全部是 JVM 测试，不需要设备。覆盖：
 
 | 测试类 | 数量 | 覆盖内容 |
 |---|---|---|
 | `AssessmentScorerTest` | 26 | 评分、否决、风险特征、解释完整性、阈值边界 |
 | `TextNormalizerTest` | 14 | 文本归一化与规避手法、关键词匹配 |
 | `ClickVerifierTest` | 14 | 点击后验证、危险优先于成功、结果语义 |
-| `DecisionEngineTest` | 9 | 阈值运算、门槛顺序、信任度顺序 |
+| `DecisionEngineTest` | 10 | 阈值运算、门槛顺序、信任度顺序、学习进程 |
 | `PositionAnalyzerTest` | 8 | 位置分类与角落亲和度 |
 | `CircuitBreakerTest` | 8 | 断路器、暂停与恢复 |
 | `RateLimiterTest` | 7 | 限流器（注入时钟） |

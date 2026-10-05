@@ -91,6 +91,13 @@ class SmartSkipAccessibilityService : AccessibilityService() {
     /** Outcome of the most recent verified tap, fed back into the next assessment. */
     private var lastOutcome: LastOutcome? = null
 
+    /**
+     * Packages already recorded in the safety table during this process.
+     *
+     * A plain set, touched only from the single event-consumer coroutine, so it needs no locking.
+     */
+    private val packagesSeenThisSession = HashSet<String>()
+
     /** Attributes a completed tap to the rule responsible for it. */
     private data class PendingVerification(
         val packageName: String,
@@ -222,6 +229,15 @@ class SmartSkipAccessibilityService : AccessibilityService() {
 
         val candidates = CandidateCollector.collect(analysis, signatureHistory)
         if (candidates.isEmpty()) return
+
+        // Note the app once, so it appears in the UI even if SmartSkip never acts on it. Guarded
+        // by an in-memory set because this runs on a hot path and the database write is only
+        // needed the first time.
+        if (packagesSeenThisSession.add(packageName)) {
+            scope.launch {
+                runCatching { container.safetyRepository.touch(packageName, label = null) }
+            }
+        }
 
         frameCount += 1
         updateCountdownState(candidates.first().ownText)
@@ -665,11 +681,17 @@ class SmartSkipAccessibilityService : AccessibilityService() {
     )
 
     /**
-     * @return true when SmartSkip has never decided anything for this package, which
-     *   is what puts it into cautious first-sight mode.
+     * @return true when SmartSkip has never produced a rule for this package, which is what puts
+     *   it into cautious first-sight mode.
+     *
+     * Deliberately answered from the rule cache rather than from the safety cache: rules are what
+     * learning actually produces, so "no rule at all" is the honest definition of an unknown app.
+     * An earlier version consulted the safety cache, which was only ever populated by a call that
+     * did not exist, so the answer was permanently "unknown" and the learning path could never
+     * reach automatic action.
      */
     private fun hasNoHistoryFor(packageName: String): Boolean =
-        container.safetyRepository.cachedStates()[packageName] == null
+        !container.ruleStore.hasAnyRuleFor(packageName)
 
     /**
      * Dangerous outcomes already attributed to this exact signature. A non-zero

@@ -84,6 +84,26 @@ class RuleStore(
             ?: cache[Key(packageName, "", signature)]
 
     /**
+     * @return true when SmartSkip has ever created a rule for this package, under any activity.
+     *
+     * This is the question "have I dealt with this app before?", which decides whether the
+     * first-sight caution still applies. It is answered from the rule cache rather than from the
+     * per-package safety cache, because rules are what learning actually produces: a package with
+     * no rule at all is genuinely a new surface, whereas a package whose rules were all rejected
+     * by the user should not silently regain automatic action.
+     */
+    fun hasAnyRuleFor(packageName: String): Boolean =
+        cache.keys.any { it.packageName == packageName }
+
+    /**
+     * @return true when a rule exists for this package and activity, under any signature.
+     */
+    fun hasAnyRuleFor(packageName: String, activityName: String?): Boolean {
+        val activity = activityName.orEmpty()
+        return cache.keys.any { it.packageName == packageName && it.activityName == activity }
+    }
+
+    /**
      * Creates the rule for an observed control, if learning is enabled and no rule
      * exists yet.
      *
