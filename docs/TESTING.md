@@ -39,9 +39,9 @@ Real ads cannot test the click path, and they cannot test fake skip buttons at a
 
 ```bash
 # adb needs the service enabled and bound; the runner checks this and refuses to run otherwise
-pwsh .tooling/run-harness.ps1            # observe: scoring and vetoes
-pwsh .tooling/run-harness.ps1 -Act       # act: the click path, with rules confirmed
-pwsh .tooling/run-harness.ps1 -Only bait,payment
+pwsh tools/run-harness.ps1            # observe: scoring and vetoes
+pwsh tools/run-harness.ps1 -Act       # act: the click path, with rules confirmed
+pwsh tools/run-harness.ps1 -Only bait,payment
 ```
 
 Ground truth is the **harness's own** `HARNESS-CLICKED` log line, never the engine's verdict. A line

@@ -402,17 +402,38 @@ app/src/main/java/io/github/szzgx/smartskip/
 ./gradlew :app:testDebugUnitTest
 ```
 
-87 个测试，全部是 JVM 测试，不需要设备。覆盖：
+94 个 JVM 单元测试，不需要设备。覆盖：
 
 | 测试类 | 数量 | 覆盖内容 |
 |---|---|---|
-| `AssessmentScorerTest` | 26 | 评分、否决、风险特征、解释完整性、阈值边界 |
-| `TextNormalizerTest` | 14 | 文本归一化与规避手法、关键词匹配 |
+| `AssessmentScorerTest` | 30 | 评分、否决、风险特征、解释完整性、阈值边界、伪跳过 |
+| `TextNormalizerTest` | 17 | 文本归一化、规避手法、关键词匹配、倒计时解析 |
 | `ClickVerifierTest` | 14 | 点击后验证、危险优先于成功、结果语义 |
 | `DecisionEngineTest` | 10 | 阈值运算、门槛顺序、信任度顺序、学习进程 |
 | `PositionAnalyzerTest` | 8 | 位置分类与角落亲和度 |
 | `CircuitBreakerTest` | 8 | 断路器、暂停与恢复 |
 | `RateLimiterTest` | 7 | 限流器（注入时钟） |
+
+### 真机测试：对抗性测试靶
+
+单元测试证明逻辑自洽，但证明不了"它在真机上按下了正确的东西"。真机上唯一能跑通点击链路的资产
+是一个 debug 专属的**对抗性测试靶**（14 个精心构造的伪装广告布局），每个场景都事先声明了
+"正确行为"是什么：
+
+```powershell
+pwsh tools/run-harness.ps1           # 只观察：评分与否决
+pwsh tools/run-harness.ps1 -Act      # 激活：点击链路，规则已确认
+```
+
+判据是测试靶**自己**记录的点击，而不是引擎的判决——一个声称点了但屏幕没收到点击的引擎，
+只有独立记录才能抓住。
+
+为什么需要它：真实广告**测不了点击链路**。实测中唯一抓到的一条真实开屏广告，它的无障碍树里
+**没有任何跳过控件**（只有优惠、自动关闭倒计时和"开心收下"），而真实广告也没有理由去
+*伪造*一个它可以直接隐藏的控件——伪跳过这个核心威胁只能靠人工构造出来。
+
+真机验证过与未验证过的内容，以及七个曾经产出过"自信的错误结论"的测试陷阱（`am force-stop`
+会摘掉无障碍服务等），都记在 [docs/TESTING.md](docs/TESTING.md)。脚本说明见 [tools/README.md](tools/README.md)。
 
 其中几个测试是针对真实问题的回归防线：
 
