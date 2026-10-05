@@ -7,6 +7,52 @@
 // options now live in the `kotlin { compilerOptions { ... } }` extension.
 // ---------------------------------------------------------------------------
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+/**
+ * Release-signing credentials, read once at configuration time.
+ *
+ * Sources, in order of precedence:
+ *
+ *  1. `SMARTSKIP_KEYSTORE_*` environment variables, for CI;
+ *  2. an untracked `keystore.properties` at the repository root, for local release builds.
+ *
+ * Read here rather than inside `android { }` because `signingConfigs` is only reachable from
+ * that block's receiver, while plain file reading is not.
+ *
+ * A repository must never contain a signing key, and `keystore.properties` is in `.gitignore`
+ * for that reason. When nothing is configured the release APK is left unsigned — the build
+ * still succeeds, and the shrinking rules are still exercised.
+ */
+data class ReleaseSigning(
+    val storeFile: String,
+    val storePassword: String,
+    val keyAlias: String,
+    val keyPassword: String,
+)
+
+val releaseSigning: ReleaseSigning? = run {
+    val propertiesFile = rootProject.file("keystore.properties")
+    val properties = Properties()
+    if (propertiesFile.exists()) {
+        propertiesFile.inputStream().use { properties.load(it) }
+    }
+
+    fun value(envName: String, propertyName: String): String? =
+        System.getenv(envName)?.takeIf { it.isNotBlank() }
+            ?: properties.getProperty(propertyName)?.takeIf { it.isNotBlank() }
+
+    val file = value("SMARTSKIP_KEYSTORE_FILE", "storeFile")
+    val storePassword = value("SMARTSKIP_KEYSTORE_PASSWORD", "storePassword")
+    val alias = value("SMARTSKIP_KEY_ALIAS", "keyAlias")
+    val keyPassword = value("SMARTSKIP_KEY_PASSWORD", "keyPassword")
+
+    if (file == null || storePassword == null || alias == null || keyPassword == null) {
+        null
+    } else {
+        ReleaseSigning(file, storePassword, alias, keyPassword)
+    }
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -47,6 +93,28 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+
+            /*
+             * Release signing is applied inside this block because `signingConfigs` is only in
+             * scope here. When no credentials are configured the release APK stays unsigned,
+             * which is what a fresh clone and CI should get.
+             */
+            releaseSigning?.let { signing ->
+                val keystore = rootProject.file(signing.storeFile)
+                if (keystore.exists()) {
+                    signingConfig = signingConfigs.create("release") {
+                        storeFile = keystore
+                        storePassword = signing.storePassword
+                        keyAlias = signing.keyAlias
+                        keyPassword = signing.keyPassword
+                    }
+                } else {
+                    logger.warn(
+                        "SmartSkip: keystore '${signing.storeFile}' was configured but does not " +
+                            "exist; the release build will be unsigned.",
+                    )
+                }
+            }
         }
     }
 
@@ -85,8 +153,7 @@ kotlin {
     }
 }
 
-dependencies {
-    // --- AndroidX core / lifecycle ---
+dependencies {    // --- AndroidX core / lifecycle ---
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)

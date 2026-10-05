@@ -12,6 +12,16 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+        Guards the inspector trigger. Signature level, so only a build signed with the same
+        key — that is, SmartSkip itself — can request a capture of the current screen.
+    -->
+    <permission
+        android:name="io.github.szzgx.smartskip.permission.INSPECTOR"
+        android:label="@string/permission_inspector_label"
+        android:description="@string/permission_inspector_description"
+        android:protectionLevel="signature" />
+
     <application
         android:name=".SmartSkipApplication"
         android:allowBackup="false"
@@ -54,6 +64,23 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!--
+            Lets an inspector capture be requested from outside the UI, which is how the
+            inspector is used in practice: the interesting splash ad is in another app, so a
+            capture is triggered by adb or a future tile and read afterwards.
+
+            The signature-level permission is the security boundary. Without it, any app on the
+            device could ask SmartSkip to read whatever is currently on screen.
+        -->
+        <receiver
+            android:name=".accessibility.InspectorCommandReceiver"
+            android:exported="true"
+            android:permission="io.github.szzgx.smartskip.permission.INSPECTOR">
+            <intent-filter>
+                <action android:name="io.github.szzgx.smartskip.action.REQUEST_SCORED_DUMP" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

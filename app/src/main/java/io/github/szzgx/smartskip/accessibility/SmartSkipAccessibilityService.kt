@@ -107,6 +107,9 @@ class SmartSkipAccessibilityService : AccessibilityService() {
         container = SmartSkipApplication.containerOf(this)
         container.hydrate()
         configureServiceInfo()
+        ServiceStatus.markConnected()
+        // Lets the inspector ask for a scored capture of whatever is on screen now.
+        InspectorCommand.register { UiDumpProvider.captureThroughService(this) }
         scope.launch { consumeEvents() }
         Log.i(TAG, "connected")
     }
@@ -123,11 +126,15 @@ class SmartSkipAccessibilityService : AccessibilityService() {
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         Log.i(TAG, "unbound; stopping work")
+        InspectorCommand.unregister()
+        ServiceStatus.markDisconnected()
         scope.cancel()
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
+        InspectorCommand.unregister()
+        ServiceStatus.markDisconnected()
         scope.cancel()
         super.onDestroy()
     }
@@ -349,6 +356,7 @@ class SmartSkipAccessibilityService : AccessibilityService() {
 
         if (!verdict.shouldClick) {
             Log.d(TAG, "no click: ${verdict.reason}")
+            ServiceStatus.recordObservation(packageName, verdict.score, verdict.reason)
             return
         }
 
@@ -359,6 +367,7 @@ class SmartSkipAccessibilityService : AccessibilityService() {
                 else -> safety.suspensionReason ?: "$packageName 已被暂停自动操作"
             }
             Log.d(TAG, "would have clicked (score ${verdict.score}) but $why")
+            ServiceStatus.recordObservation(packageName, verdict.score, "本可跳过（${verdict.score} 分），但$why")
             return
         }
 
@@ -413,6 +422,7 @@ class SmartSkipAccessibilityService : AccessibilityService() {
         }
 
         rateLimiter.record(candidate.packageName)
+        ServiceStatus.recordAutoSkip(candidate.packageName, verdict.score, verdict.reason)
         Log.i(
             TAG,
             "clicked ${candidate.structureSignature} in ${candidate.packageName} (score ${verdict.score}, threshold ${verdict.effectiveThreshold})",
@@ -508,8 +518,9 @@ class SmartSkipAccessibilityService : AccessibilityService() {
         Log.i(TAG, "verify ${result.outcome}: ${result.explanation}")
 
         if (result.isDangerous) {
-            // Stop acting on this app rather than continuing to experiment on the
-            // user's device (design doc §8).
+            // Stop acting on this app rather than continuing to experiment on the user's
+            // device (design doc §8).
+            ServiceStatus.recordDangerousMisclick(pending.packageName, result.explanation)
             Log.w(TAG, "dangerous mis-click in ${pending.packageName}; suppressing further auto-skips")
         }
     }

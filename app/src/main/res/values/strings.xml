@@ -6,6 +6,10 @@
     <string name="accessibility_service_label">SmartSkip 开屏广告跳过</string>
     <string name="accessibility_service_description">SmartSkip 需要无障碍权限来读取当前屏幕的控件结构，从而识别开屏广告中的“跳过”按钮。所有判断都在本机完成，不会上传任何界面数据，也不会保存密码、验证码或聊天内容。</string>
 
+    <!-- Inspector permission (signature level; never shown to the user) -->
+    <string name="permission_inspector_label">SmartSkip 界面检查</string>
+    <string name="permission_inspector_description">允许触发一次当前屏幕的控件结构抓取，用于调试识别逻辑。</string>
+
     <!-- Navigation -->
     <string name="nav_dashboard">状态</string>
     <string name="nav_events">记录</string>
