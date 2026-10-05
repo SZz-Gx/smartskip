@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# SmartSkip — line ending policy
+#
+# Without this file, a Windows checkout with core.autocrlf=true rewrites every
+# text file to CRLF. That is mostly cosmetic, but it is fatal for `gradlew`:
+# the POSIX shell launcher fails outright with "bad interpreter" once its first
+# line ends in CRLF, and on Windows it would also dirty the tree on every commit.
+# ---------------------------------------------------------------------------
+
+# Default: normalise to LF inside the repository.
+* text=auto eol=lf
+
+# --- Shell launchers must keep LF, always ----------------------------------
+gradlew text eol=lf
+*.sh text eol=lf
+
+# --- Windows batch files must keep CRLF ------------------------------------
+gradlew.bat text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# --- Binary assets: never touch --------------------------------------------
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ttf binary
+*.otf binary
+*.so binary
+*.zip binary
+
+# --- Generated / vendored files: keep them out of diffs and language stats --
+gradle/wrapper/gradle-wrapper.jar binary -diff -merge -text
+app/schemas/*.json linguist-generated=true
