@@ -1,0 +1,357 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "5ca849c0105341d905d90e2d15be0f2e",
+    "entities": [
+      {
+        "tableName": "advertisement_event",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `package_name` TEXT NOT NULL, `activity_name` TEXT, `timestamp_ms` INTEGER NOT NULL, `text_features` TEXT NOT NULL, `resource_id` TEXT, `class_name` TEXT NOT NULL, `bounds_left` INTEGER NOT NULL, `bounds_top` INTEGER NOT NULL, `bounds_right` INTEGER NOT NULL, `bounds_bottom` INTEGER NOT NULL, `screen_width` INTEGER NOT NULL, `screen_height` INTEGER NOT NULL, `structure_signature` TEXT NOT NULL, `score` INTEGER NOT NULL, `band` TEXT NOT NULL, `action` TEXT NOT NULL, `result` TEXT NOT NULL, `veto_reasons` TEXT NOT NULL, `top_features` TEXT NOT NULL, `duration_ms` INTEGER NOT NULL, `mode` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityName",
+            "columnName": "activity_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "timestampMs",
+            "columnName": "timestamp_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "textFeatures",
+            "columnName": "text_features",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resourceId",
+            "columnName": "resource_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "className",
+            "columnName": "class_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "boundsLeft",
+            "columnName": "bounds_left",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "boundsTop",
+            "columnName": "bounds_top",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "boundsRight",
+            "columnName": "bounds_right",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "boundsBottom",
+            "columnName": "bounds_bottom",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "screenWidth",
+            "columnName": "screen_width",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "screenHeight",
+            "columnName": "screen_height",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "structureSignature",
+            "columnName": "structure_signature",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "score",
+            "columnName": "score",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "band",
+            "columnName": "band",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "action",
+            "columnName": "action",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "result",
+            "columnName": "result",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vetoReasons",
+            "columnName": "veto_reasons",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "topFeatures",
+            "columnName": "top_features",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "duration_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_advertisement_event_timestamp_ms",
+            "unique": false,
+            "columnNames": [
+              "timestamp_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_advertisement_event_timestamp_ms` ON `${TABLE_NAME}` (`timestamp_ms`)"
+          },
+          {
+            "name": "index_advertisement_event_package_name_timestamp_ms",
+            "unique": false,
+            "columnNames": [
+              "package_name",
+              "timestamp_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_advertisement_event_package_name_timestamp_ms` ON `${TABLE_NAME}` (`package_name`, `timestamp_ms`)"
+          },
+          {
+            "name": "index_advertisement_event_structure_signature",
+            "unique": false,
+            "columnNames": [
+              "structure_signature"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_advertisement_event_structure_signature` ON `${TABLE_NAME}` (`structure_signature`)"
+          }
+        ]
+      },
+      {
+        "tableName": "app_rule",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`package_name` TEXT NOT NULL, `activity_name` TEXT NOT NULL, `structure_signature` TEXT NOT NULL, `confidence` REAL NOT NULL, `success_count` INTEGER NOT NULL, `failure_count` INTEGER NOT NULL, `dangerous_failure_count` INTEGER NOT NULL, `user_confirmed` INTEGER NOT NULL, `user_rejected` INTEGER NOT NULL, `is_enabled` INTEGER NOT NULL, `text_observation` TEXT NOT NULL, `first_seen_ms` INTEGER NOT NULL, `last_used_ms` INTEGER NOT NULL, PRIMARY KEY(`package_name`, `activity_name`, `structure_signature`))",
+        "fields": [
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityName",
+            "columnName": "activity_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "structureSignature",
+            "columnName": "structure_signature",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confidence",
+            "columnName": "confidence",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "successCount",
+            "columnName": "success_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failureCount",
+            "columnName": "failure_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dangerousFailureCount",
+            "columnName": "dangerous_failure_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userConfirmed",
+            "columnName": "user_confirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userRejected",
+            "columnName": "user_rejected",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isEnabled",
+            "columnName": "is_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "textObservation",
+            "columnName": "text_observation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSeenMs",
+            "columnName": "first_seen_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastUsedMs",
+            "columnName": "last_used_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "package_name",
+            "activity_name",
+            "structure_signature"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_app_rule_package_name",
+            "unique": false,
+            "columnNames": [
+              "package_name"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_app_rule_package_name` ON `${TABLE_NAME}` (`package_name`)"
+          }
+        ]
+      },
+      {
+        "tableName": "package_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`package_name` TEXT NOT NULL, `human_label` TEXT, `dangerous_misclick_count` INTEGER NOT NULL, `consecutive_failure_count` INTEGER NOT NULL, `is_auto_skip_suspended` INTEGER NOT NULL, `suspension_reason` TEXT, `suspended_at_ms` INTEGER, `observation_only` INTEGER NOT NULL, `first_seen_ms` INTEGER NOT NULL, `last_seen_ms` INTEGER NOT NULL, PRIMARY KEY(`package_name`))",
+        "fields": [
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "humanLabel",
+            "columnName": "human_label",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dangerousMisclickCount",
+            "columnName": "dangerous_misclick_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consecutiveFailureCount",
+            "columnName": "consecutive_failure_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isAutoSkipSuspended",
+            "columnName": "is_auto_skip_suspended",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "suspensionReason",
+            "columnName": "suspension_reason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "suspendedAtMs",
+            "columnName": "suspended_at_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "observationOnly",
+            "columnName": "observation_only",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSeenMs",
+            "columnName": "first_seen_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSeenMs",
+            "columnName": "last_seen_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "package_name"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '5ca849c0105341d905d90e2d15be0f2e')"
+    ]
+  }
+}
