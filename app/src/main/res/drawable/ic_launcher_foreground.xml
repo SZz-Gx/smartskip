@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SmartSkip launcher icon: a stylised "skip forward" chevron pair, echoing the
+    ">>" glyph that real splash-ad skip buttons use. Drawn inside the 72dp safe
+    zone of the 108dp adaptive-icon canvas.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- First chevron -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M38,32 L62,54 L38,76 L38,66 L48,54 L38,42 Z" />
+
+    <!-- Second chevron -->
+    <path
+        android:fillColor="#CCFFFFFF"
+        android:pathData="M58,32 L82,54 L58,76 L58,66 L68,54 L58,42 Z" />
+
+</vector>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SmartSkip — debug-only manifest overlay
+
+    INTERNET is granted to the DEBUG VARIANT ONLY. It exists purely so that a
+    developer can load real WebView splash ads while investigating how they expose
+    themselves in the accessibility tree. The released APK does not contain this
+    permission, which is what makes the "no data leaves the device" claim
+    structurally true rather than merely promised.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+</manifest>

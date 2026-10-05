@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SmartSkip accessibility service configuration.
+
+    Design notes (why each flag is warranted):
+
+      * `canRetrieveWindowContent` — required to read the UI tree at all.
+      * `flagReportViewIds`        — resource-id is one of the strongest, least
+                                     spoofable signals for a skip button.
+      * `flagRetrieveInteractiveWindows` — splash ads frequently live in a
+                                     secondary window (a WebView or a dedicated
+                                     "ad" window) rather than the main one.
+      * `flagIncludeNotImportantViews` — ad SDKs often mark skip buttons as
+                                     "not important for accessibility" precisely
+                                     to hide them from tools like this one.
+      * `notificationTimeout=100`  — splash ads are short-lived, so we need the
+                                     event stream to be reasonably prompt.
+      * `canTakeScreenshot=false`  — Phase 0-3 does NOT use screenshots. Visual
+                                     OCR/CV is an explicitly deferred direction
+                                     (design doc §19) and is deliberately not
+                                     requested here.
+
+    Deliberately NOT requested:
+
+      * `flagRequestFilterKeyEvents` — would let the service intercept every
+        keystroke, including on password and payment screens. Nothing in this
+        project needs key events, so the capability is not taken (design doc
+        §17: "能不用的权限坚决不用").
+      * `canTakeScreenshot` / `canPerformGestures` — not needed for Phase 0-3.
+
+    Observe-only mode is NOT used, because automatic skipping is the whole point;
+    however the runtime safety controls (`preventAutoSkip`) are honoured in code.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeWindowsChanged|typeViewClicked|typeViewLongClicked|typeViewFocused|typeViewScrolled"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
+    android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="false"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="100"
+    android:settingsActivity="io.github.szzgx.smartskip.ui.MainActivity" />

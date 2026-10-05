@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Backup / device-transfer rules. SmartSkip stores package names, resource-ids,
+    control geometry and text *classes* — never passwords, SMS codes, chat
+    content or payment details — but it is still observed data about the user's
+    device, so it is excluded from cloud backup and device-to-device transfer.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="datastore" />
+        <exclude domain="file" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="datastore" />
+        <exclude domain="file" path="." />
+    </device-transfer>
+</data-extraction-rules>
