@@ -9,9 +9,13 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.szzgx.smartskip.analysis.AutoSkipMode
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /**
  * The user's settings, in the exact shape design doc §12 describes as
@@ -50,12 +54,47 @@ data class UserPreferences(
 
 /**
  * Persists [UserPreferences] in a small DataStore file.
+ *
+ * ## Why there is a cache
+ *
+ * The decision pipeline must never block on disk I/O, because it runs inside the
+ * accessibility event stream and a stalled frame is a visibly janky device. So the
+ * current value is held in memory, refreshed once at startup and kept in step by
+ * [update]. [flow] remains the source of truth for the UI.
  */
-class PreferenceStore(private val context: Context) {
+class PreferenceStore(private val context: Context, private val scope: CoroutineScope) {
 
-    val flow: Flow<UserPreferences> = context.dataStore.data.map { it.toUserPreferences() }
+    @Volatile
+    private var cached: UserPreferences = UserPreferences()
 
-    suspend fun current(): UserPreferences = flow.first()
+    private val state = MutableStateFlow(cached)
+
+    /** Stream of preference changes, for Compose. */
+    val flow: StateFlow<UserPreferences> = state.asStateFlow()
+
+    /**
+     * The last known value. Cheap and non-suspending, safe to call from the
+     * accessibility event path.
+     */
+    fun snapshot(): UserPreferences = cached
+
+    /**
+     * Starts mirroring DataStore into memory. Call once, from a long-lived scope.
+     */
+    fun start() {
+        scope.launch {
+            context.dataStore.data
+                .catch { emit(androidx.datastore.preferences.core.emptyPreferences()) }
+                .collect { prefs ->
+                    val loaded = prefs.toUserPreferences()
+                    cached = loaded
+                    state.value = loaded
+                }
+        }
+    }
+
+    /** Reads the persisted value directly, bypassing the cache. */
+    suspend fun current(): UserPreferences = context.dataStore.data.first().toUserPreferences()
 
     suspend fun update(transform: (UserPreferences) -> UserPreferences) {
         context.dataStore.edit { prefs ->
@@ -71,6 +110,11 @@ class PreferenceStore(private val context: Context) {
             prefs[KEYS.stopAfterDangerousMisclicks] = updated.stopAfterDangerousMisclicks
             prefs[KEYS.eventRetentionDays] = updated.eventRetentionDays
             prefs[KEYS.logObservationEvents] = updated.logObservationEvents
+
+            // Keep the in-memory copy in step immediately, so the next accessibility
+            // frame sees the new setting rather than waiting for the Flow to emit.
+            cached = updated
+            state.value = updated
         }
     }
 

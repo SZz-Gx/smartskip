@@ -42,8 +42,6 @@ enum class DangerousOutcome {
  *
  * @property hasAdCreativeOverlap the candidate's bounds fall inside the ad
  *   container's bounds.
- * @property hasAdDisclosureOnlyNearby an "广告" marker exists but not on the
- *   candidate's own ancestor chain — i.e. the label is part of the creative.
  * @property hasPaymentContext a payment, purchase or credential surface exists in
  *   the window (id or class evidence).
  * @property hasDownloadOrStoreContext a download / install / app-store surface
@@ -58,7 +56,6 @@ enum class DangerousOutcome {
  */
 data class WindowRiskProbe(
     val hasAdCreativeOverlap: Boolean,
-    val hasAdDisclosureOnlyNearby: Boolean,
     val hasPaymentContext: Boolean,
     val hasDownloadOrStoreContext: Boolean,
     val hasNestedClickableDescendant: Boolean,
@@ -69,7 +66,6 @@ data class WindowRiskProbe(
     companion object {
         val NONE = WindowRiskProbe(
             hasAdCreativeOverlap = false,
-            hasAdDisclosureOnlyNearby = false,
             hasPaymentContext = false,
             hasDownloadOrStoreContext = false,
             hasNestedClickableDescendant = false,
@@ -154,8 +150,19 @@ object RiskAnalyzer {
     /** A control covering most of the window cannot be chrome. */
     private const val HIGH_CENTER_OF_MASS_FRACTION = 0.5f
 
-    /** A control this large in the centre is creative. */
-    private const val LARGE_FRACTION = 0.35f
+    /**
+     * A *centred* control covering more than this share of the window is creative.
+     *
+     * The bar is low on purpose. A real skip button is a corner chip of a few percent of
+     * the screen; anything centred and larger than this is a picture with the word "跳过"
+     * printed on it. Setting it at 0.35 left a 30%-of-screen centred block unpenalised,
+     * which is exactly the shape of an interstitial's full-bleed creative.
+     *
+     * The accepted cost: a genuinely centred, large dismiss control — a full-width dialog
+     * footer, for instance — is penalised and will not be auto-clicked. That is the
+     * intended direction of error under design doc §3.2.
+     */
+    private const val LARGE_CENTRED_FRACTION = 0.15f
 
     fun analyze(
         ctx: CandidateContext,
@@ -172,7 +179,7 @@ object RiskAnalyzer {
             hasInducementWording = TextSignal.INDUCEMENT in text.signals,
             isNestedInteractive = probe.hasNestedClickableDescendant,
             isSuspiciouslyLargeInCenter = probe.candidateIsCentered &&
-                ctx.screenAreaFraction >= LARGE_FRACTION,
+                ctx.screenAreaFraction >= LARGE_CENTRED_FRACTION,
             hasHighCenterOfMass = ctx.screenAreaFraction >= HIGH_CENTER_OF_MASS_FRACTION,
             priorDangerousOutcomes = dangerousOutcomes,
             classIsSuspicious = SUSPICIOUS_CLASS_HINTS.any { it in classLower },

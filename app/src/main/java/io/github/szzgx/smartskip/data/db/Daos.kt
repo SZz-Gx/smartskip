@@ -19,6 +19,15 @@ interface AdvertisementEventDao {
     @Insert
     suspend fun insert(event: AdvertisementEventEntity): Long
 
+    /**
+     * Backfills the post-click outcome.
+     *
+     * A targeted UPDATE rather than a whole-entity write, so that a concurrent insert
+     * cannot resurrect stale column values.
+     */
+    @Query("UPDATE advertisement_event SET result = :result WHERE id = :id")
+    suspend fun updateResult(id: Long, result: String)
+
     @Query("SELECT * FROM advertisement_event ORDER BY timestamp_ms DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<AdvertisementEventEntity>>
 
@@ -36,7 +45,7 @@ interface AdvertisementEventDao {
     suspend fun recent(limit: Int): List<AdvertisementEventEntity>
 
     @Query("SELECT COUNT(*) FROM advertisement_event")
-    suspend fun count(): Int
+    suspend fun count(): Long
 
     @Query("DELETE FROM advertisement_event WHERE id IN (SELECT id FROM advertisement_event ORDER BY timestamp_ms DESC LIMIT -1 OFFSET :keep)")
     suspend fun keepNewest(keep: Int): Int
@@ -68,6 +77,13 @@ interface AppRuleDao {
 
     @Query("SELECT * FROM app_rule ORDER BY last_used_ms DESC")
     fun observeAll(): Flow<List<AppRuleEntity>>
+
+    /**
+     * One-shot bulk read, used to prime the in-memory cache at startup. Rules are
+     * few (tens to hundreds), so a full read is cheap and avoids a per-frame query.
+     */
+    @Query("SELECT * FROM app_rule")
+    suspend fun allRules(): List<AppRuleEntity>
 
     @Query("SELECT * FROM app_rule ORDER BY last_used_ms DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<AppRuleEntity>>
@@ -105,7 +121,7 @@ interface AppRuleDao {
     suspend fun deleteAll()
 
     @Query("SELECT COUNT(*) FROM app_rule")
-    suspend fun count(): Int
+    suspend fun count(): Long
 }
 
 /**
@@ -119,6 +135,10 @@ interface PackageStateDao {
 
     @Query("SELECT * FROM package_state ORDER BY last_seen_ms DESC")
     fun observeAll(): Flow<List<PackageStateEntity>>
+
+    /** One-shot bulk read, used to prime the safety cache at startup. */
+    @Query("SELECT * FROM package_state")
+    suspend fun allStates(): List<PackageStateEntity>
 
     @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
     suspend fun upsert(state: PackageStateEntity)

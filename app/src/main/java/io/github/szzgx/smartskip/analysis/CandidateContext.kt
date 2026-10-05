@@ -13,6 +13,9 @@ package io.github.szzgx.smartskip.analysis
  *
  * @property packageName the foreground application.
  * @property activityName the reported class name of the window's root, if known.
+ * @property nodeIndex index of this node inside its window's `nodes` list. Carried so
+ *   that window-level probing can refer to a candidate directly instead of
+ *   re-finding it by geometry.
  * @property depth distance from the window root (root = 0).
  * @property className the node's fully qualified view class.
  * @property viewIdResourceName the `resource-id`, when `flagReportViewIds` yields one.
@@ -55,6 +58,7 @@ package io.github.szzgx.smartskip.analysis
 data class CandidateContext(
     val packageName: String,
     val activityName: String?,
+    val nodeIndex: Int,
     val depth: Int,
     val className: String,
     val viewIdResourceName: String?,

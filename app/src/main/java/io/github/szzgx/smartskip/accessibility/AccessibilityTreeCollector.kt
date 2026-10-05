@@ -96,9 +96,14 @@ object AccessibilityTreeCollector {
     }
 
     /**
+     * Convenience overload for a single candidate, used by the inspector when it wants
+     * the window-level findings for exactly one node.
+     */
+    fun probeForSingleCandidate(analysis: WindowAnalysis, nodeIndex: Int): ProbeResult =
+        probeRisk(analysis, listOf(nodeIndex))
+
+    /**
      * Raw window-level findings that no single node can express.
-     *
-     * @property adContainerBounds bounds of every node identified as an ad container.
      */
     data class ProbeResult(
         val hasPaymentContext: Boolean,
@@ -160,11 +165,24 @@ object AccessibilityTreeCollector {
 
         val candidateIsCentered = candidateIndices.any { index ->
             val node = nodes.getOrNull(index) ?: return@any false
-            if (analysis.screenWidth <= 0) {
+            if (analysis.screenWidth <= 0 || analysis.screenHeight <= 0) {
                 false
             } else {
                 val centreX = (node.boundsLeft + node.boundsRight) / 2f
-                kotlin.math.abs(centreX / analysis.screenWidth - 0.5f) <= 0.15f
+                val centreY = (node.boundsTop + node.boundsBottom) / 2f
+                val horizontallyCentral =
+                    kotlin.math.abs(centreX / analysis.screenWidth - 0.5f) <= CENTRE_BAND
+                val verticallyCentral =
+                    kotlin.math.abs(centreY / analysis.screenHeight - 0.5f) <= CENTRE_BAND
+                /*
+                 * Both axes must be central, and the node must not span the screen
+                 * horizontally. A wide banner centred vertically (centreY 0.5) is not
+                 * "in the middle of the screen" in the sense that makes it ad creative,
+                 * and treating it that way penalised legitimate top-of-screen controls
+                 * whose centre happened to land near the vertical midpoint.
+                 */
+                horizontallyCentral && verticallyCentral &&
+                    node.width < analysis.screenWidth * MAX_CENTRAL_WIDTH_FRACTION
             }
         }
 
@@ -179,6 +197,15 @@ object AccessibilityTreeCollector {
     }
 
     private val DOWNLOAD_TEXT_ANY = listOf("下载", "安装", "应用商店", "download", "install")
+
+    /** How close to the screen centre still counts as central, per axis. */
+    private const val CENTRE_BAND = 0.18f
+
+    /**
+     * A node spanning more than this share of the screen width is creative, not something
+     * "placed" in the centre.
+     */
+    private const val MAX_CENTRAL_WIDTH_FRACTION = 0.6f
 
     private fun isAdContainer(node: NodeSummary): Boolean {
         val id = node.viewIdResourceName?.lowercase().orEmpty()

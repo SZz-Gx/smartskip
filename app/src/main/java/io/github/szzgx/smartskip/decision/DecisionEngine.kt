@@ -48,33 +48,40 @@ data class ThresholdAdjustment(val label: String, val delta: Int)
  * Turns an [Assessment] into a [Verdict].
  *
  * The ordering of checks is the safety-critical design of this class, and it is
- * deliberate: vetoes are tested before the score is even considered. A control can
- * therefore never buy its way past a hard veto with a high score, no matter how
- * many positive features it accumulates. That is the code-level expression of
- * design doc §3.2.
+ * deliberate: vetoes are tested before the score is even considered, so a control can
+ * never buy its way past a hard veto with a high score. That is the code-level
+ * expression of design doc §3.2.
+ *
+ * The second deliberate choice is that **a surface with no rule at all is never clicked
+ * automatically, in any mode**. Design doc §9 describes the progression "unknown app →
+ * cautious mode → user confirms → rule → automatic next time", and a finite threshold
+ * penalty cannot express that promise: a confident-looking fake skip button on a
+ * brand-new app would clear any penalty. Making it an absolute gate is what makes the
+ * promise true. See [DecisionEngine.FIRST_SIGHT_OBSERVATION_THRESHOLD].
  */
 object DecisionEngine {
 
     /**
-     * A control SmartSkip has already proven safe on this device does not need to
-     * clear the first-sight bar again; the whole point of learning is that the
-     * second encounter is cheaper than the first.
+     * The threshold applied to a surface SmartSkip has never decided on and the user has
+     * never confirmed.
+     *
+     * Above [io.github.szzgx.smartskip.analysis.Assessment.score]'s ceiling of 100, so no
+     * amount of textual, positional or structural confidence can clear it. Only history — a
+     * learned or user-confirmed rule — can lower the bar.
      */
-    private const val KNOWN_RULE_FIRST_SIGHT_RELIEF = -12
+    const val FIRST_SIGHT_OBSERVATION_THRESHOLD = 101
 
     /**
-     * A rule the user personally confirmed is trusted more than one SmartSkip
-     * inferred, and design doc §9 explicitly promises that confirmation leads to
-     * automatic action.
+     * Relief granted for a rule the user personally vouched for. Design doc §9 explicitly
+     * promises that confirmation leads to automatic action.
      */
-    private const val USER_CONFIRMED_RELIEF = -6
+    private const val USER_CONFIRMED_RELIEF = -8
 
     /**
-     * How much of the first-sight penalty still applies to a known-but-unconfirmed
-     * rule. Reduced rather than removed: seeing the same layout twice is evidence,
-     * but not the same as the user having vouched for it.
+     * Relief granted for a rule SmartSkip learned by itself. Smaller in magnitude than
+     * [USER_CONFIRMED_RELIEF], because a self-inferred rule has not been vouched for.
      */
-    private const val KNOWN_RULE_PENALTY_FRACTION = 0.5
+    private const val KNOWN_RULE_RELIEF = -6
 
     fun decide(
         assessment: Assessment,
@@ -87,32 +94,35 @@ object DecisionEngine {
 
         var effective = thresholds.clickThreshold
 
-        if (assessment.isFirstSight) {
-            when {
-                isUserConfirmed -> {
-                    adjustments += ThresholdAdjustment("用户已确认该规则", USER_CONFIRMED_RELIEF)
-                    effective += USER_CONFIRMED_RELIEF
-                }
+        /*
+         * The bar is lowered by trust, in two independent steps, so that the order of
+         * trust is explicit and testable:
+         *
+         *   1. the user vouched for this exact control;
+         *   2. SmartSkip learned it on its own and has seen it before.
+         *
+         * Both can apply at once. The first-sight penalty raises the bar only when
+         * *neither* applies, which is what makes "unknown app → observe" absolute rather
+         * than a finite penalty that a confident-looking fake button could outscore.
+         */
+        val firstSightUnconfirmed = assessment.isFirstSight && !isUserConfirmed && !isKnownRule
 
-                isKnownRule -> {
-                    val relief = -(thresholds.firstSightPenalty * (1.0 - KNOWN_RULE_PENALTY_FRACTION)).toInt()
-                    adjustments += ThresholdAdjustment("已命中已学习规则，首次遇到惩罚减半", relief)
-                    effective += relief
-                }
-
-                else -> {
-                    adjustments += ThresholdAdjustment(
-                        "该应用/页面此前从未处理过，采用谨慎模式",
-                        thresholds.firstSightPenalty,
-                    )
-                    effective += thresholds.firstSightPenalty
-                }
-            }
-        }
-
-        if (isUserConfirmed && !assessment.isFirstSight) {
+        if (isUserConfirmed) {
             adjustments += ThresholdAdjustment("用户已确认该规则", USER_CONFIRMED_RELIEF)
             effective += USER_CONFIRMED_RELIEF
+        }
+
+        if (isKnownRule) {
+            adjustments += ThresholdAdjustment("命中本机已学习规则", KNOWN_RULE_RELIEF)
+            effective += KNOWN_RULE_RELIEF
+        }
+
+        if (firstSightUnconfirmed) {
+            adjustments += ThresholdAdjustment(
+                "首次遇到该应用/页面且尚无任何规则，本次仅观察",
+                FIRST_SIGHT_OBSERVATION_THRESHOLD - effective,
+            )
+            effective = FIRST_SIGHT_OBSERVATION_THRESHOLD
         }
 
         // ------------------------------------------------------------ 1. vetoes
@@ -129,16 +139,18 @@ object DecisionEngine {
 
         // ------------------------------------------------------- 2. threshold
         if (assessment.score < effective) {
-            val band = assessment.band
             val reason = when {
-                band == ConfidenceBand.IGNORE ->
+                firstSightUnconfirmed && assessment.band != ConfidenceBand.IGNORE ->
+                    "评分 ${assessment.score} 已达到可自动跳过的水平，但该应用此前从未处理过，本次仅观察。" +
+                        "确认该规则后，下次将自动跳过。"
+
+                assessment.band == ConfidenceBand.IGNORE ->
                     "评分 ${assessment.score} 属于“不处理”区间（阈值 $effective）"
 
-                band == ConfidenceBand.OBSERVE ->
+                assessment.band == ConfidenceBand.OBSERVE ->
                     "评分 ${assessment.score} 属于“高风险，继续观察”区间（阈值 $effective）"
 
-                else ->
-                    "评分 ${assessment.score} 未达到自动点击阈值 $effective"
+                else -> "评分 ${assessment.score} 未达到自动点击阈值 $effective"
             }
             return Verdict(
                 shouldClick = false,
